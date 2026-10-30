@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* «Диспетчерская»: тёплая бумага, чернильная навигация, сигнальные цвета по серьёзности. */
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-paper: #f3f0e8;
+  --color-surface: #fffdf8;
+  --color-sunken: #ece8de;
+  --color-line: #ddd7c9;
+  --color-line-strong: #c9c1ae;
+  --color-ink: #151b27;
+  --color-ink-soft: #4b5466;
+  --color-ink-mute: #8a8f99;
+  --color-night: #121826;
+  --color-night-2: #1b2334;
+  --color-night-line: #2a3348;
+
+  --color-signal: #d9822b;
+  --color-signal-soft: #fbead6;
+  --color-danger: #c4402d;
+  --color-danger-soft: #f8dfd9;
+  --color-ok: #2a7a68;
+  --color-ok-soft: #d8ece5;
+  --color-info: #3a5795;
+  --color-info-soft: #dde5f4;
+  --color-violet: #6a4c9c;
+  --color-violet-soft: #e9e1f4;
+
+  --animate-rise: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade: fade 0.3s ease-out both;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+@layer base {
+  html { color-scheme: light; }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgb(21 27 39 / 0.07) 1px, transparent 0),
+      radial-gradient(1200px 500px at 85% -10%, rgb(217 130 43 / 0.10), transparent 60%);
+    background-size: 22px 22px, 100% 100%;
+    background-attachment: fixed;
+  }
+  ::selection { background: var(--color-signal-soft); }
+  :focus-visible { outline: 2px solid var(--color-signal); outline-offset: 2px; }
+}
+
+@layer components {
+  .num { @apply font-mono tabular-nums; }
+  .stagger > * { animation: var(--animate-rise); }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(n+7) { animation-delay: 240ms; }
+  .tg-html a { @apply text-info underline underline-offset-2; }
+  .tg-html b { @apply font-semibold; }
+  .tg-html i { @apply italic text-ink-soft; }
+  /* rich message Telegram: заголовки, таблицы, списки, сворачиваемые разделы */
+  .tg-rich { @apply space-y-2 whitespace-normal; }
+  .tg-rich h2 { @apply text-[17px] font-extrabold tracking-tight; }
+  .tg-rich h3 { @apply pt-2 text-[15px] font-bold; }
+  .tg-rich h4 { @apply pt-1 text-[13.5px] font-bold; }
+  .tg-rich table { @apply w-full border-collapse text-[13px]; }
+  .tg-rich th { @apply border border-line bg-sunken px-2 py-1 text-left font-semibold; }
+  .tg-rich td { @apply border border-line px-2 py-1 align-top; }
+  .tg-rich tr:nth-child(even) td { @apply bg-sunken/40; }
+  .tg-rich ul { @apply list-disc space-y-1 pl-5; }
+  .tg-rich details { @apply rounded-lg border border-line px-3 py-2; }
+  .tg-rich summary { @apply cursor-pointer font-medium; }
+  .tg-rich details[open] summary { @apply mb-2; }
+  .tg-rich footer { @apply pt-2 text-[12px] text-ink-mute; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

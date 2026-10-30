@@ -1,0 +1,35 @@
+services:
+  summary-bot:
+    build: .
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /app/data
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL in .env}
+      ADMIN_INITIAL_LOGIN: ${ADMIN_INITIAL_LOGIN:-admin}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:?Set an initial password (minimum 10 characters)}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-off}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_MODE: ${MAX_MODE:-off}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-UTC}
+      NODE_EXTRA_CA_CERTS: /app/extra-ca.pem
+    volumes:
+      - summary-data:/app/data
+      - ${EXTRA_CA_CERTS:-/etc/ssl/certs/ca-certificates.crt}:/app/extra-ca.pem:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  summary-data:

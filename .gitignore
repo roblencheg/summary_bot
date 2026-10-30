@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+.cache/
+.turbo/
+*.log
+.env
+.env.local
+.DS_Store
+.pnpm-store/
+
+# обучающий ролик: снимки, озвучка и экспорт генерируются скриптами tutorial-video/
+tutorial-video/public/shots/
+tutorial-video/public/audio/
+tutorial-video/public/tg.json
+tutorial-video/out/
+.env.*
+!.env.example
+data/
+uploads/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
