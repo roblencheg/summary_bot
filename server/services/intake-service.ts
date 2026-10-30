@@ -11,7 +11,7 @@ const OFFSET_KEY = 'telegram.offset';
 /**
  * Управление приёмом: регистрация webhook (prod) или long polling (тестовый бот).
  * AICODE-NOTE: при TELEGRAM_MODE=off (по умолчанию в dev) здесь НЕ вызываются setWebhook,
- * deleteWebhook и getUpdates — dev-контейнер видит prod-токен и иначе сломал бы приём в prod.
+ * deleteWebhook и getUpdates — использование одного токена несколькими процессами нарушает приём.
  * В режиме polling при старте снимается webhook (иначе getUpdates отвечает 409);
  * накопленные у Telegram апдейты при этом сохраняются и приходят через getUpdates.
  */

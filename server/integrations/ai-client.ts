@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { openaiConfig } from '~server/platform';
 
 /**
- * Вызов модели через managed OpenAI-прокси с жёсткой JSON-схемой ответа.
+ * Вызов модели через внешний AI API с жёсткой JSON-схемой ответа.
  * Без БД: учёт вызовов пишет сервис по возвращённой статистике.
  */
 

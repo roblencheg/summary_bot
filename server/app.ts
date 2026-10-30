@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export async function buildApp(): Promise<{ app: FastifyInstance; container: Container | null }> {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
 
-  // CORS: в prod — только собственный домен; в dev превью открывается с адреса платформы.
+  // CORS: в prod — только собственный домен; в dev используется локальный сервер интерфейса.
   await app.register(FastifyCors, { origin: isProd ? publicBaseUrl : true, credentials: true });
   await app.register(FastifyCookie);
   registerErrorHandler(app);

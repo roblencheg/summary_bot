@@ -25,7 +25,6 @@ const toInlineKeyboard = (k: BotKeyboard) => ({ inline_keyboard: k.map((row) => 
 
 if (process.env.ALLOW_DEMO_SEED !== 'true' || process.env.NODE_ENV === 'production') throw new Error('Demo seeding requires ALLOW_DEMO_SEED=true outside production');
 const platform = createPlatform();
-if (!platform.configured) throw new Error('RUNTIME_BASE_URL / RUNTIME_TOKEN не заданы');
 const db = platform.db;
 const c = buildContainer(platform);
 

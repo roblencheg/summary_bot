@@ -1,4 +1,4 @@
-// Озвучка сегментов через managed ElevenLabs (with-timestamps) + тайминг предложений для субтитров.
+// Озвучка сегментов через ElevenLabs API (with-timestamps) + тайминг предложений для субтитров.
 //   node voice/voice.mjs            — синтезирует только изменившиеся сегменты
 // Результат: public/audio/<id>.mp3 и public/audio/timing.json
 import { createHash } from 'node:crypto';

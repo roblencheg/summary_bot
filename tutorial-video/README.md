@@ -19,7 +19,7 @@ DEMO_MANAGER_PASSWORD=<≥10 символов> pnpm exec tsx tutorial-video/seed
 cd tutorial-video && pnpm install
 # 2. снимки интерфейса и координаты элементов → public/shots/
 DEMO_MANAGER_PASSWORD=<тот же> node capture/capture.mjs
-# 3. озвучка (managed ElevenLabs, голос Will) + тайминг предложений и слов → public/audio/
+# 3. озвучка (ElevenLabs API, голос Will) + тайминг предложений и слов → public/audio/
 node voice/voice.mjs
 # 4. просмотр и рендер
 npx remotion studio

@@ -2,27 +2,25 @@ import type { Platform } from './platform';
 import { createHash } from 'node:crypto';
 
 /**
- * Схема managed-БД. Вызывается один раз при старте сервера.
+ * Схема SQLite. Вызывается один раз при старте сервера.
  *
  * Правила:
  * - Каждая таблица — через CREATE TABLE IF NOT EXISTS (idempotent).
  * - Изменения колонок — ALTER TABLE ... ADD COLUMN только после проверки
  *   SELECT name FROM pragma_table_info('<table>'); IF NOT EXISTS для колонок SQLite не поддерживает.
- * - Транзакции (BEGIN/COMMIT) заблокированы managed-DB — здесь не используем.
+ * - Шаги миграций идемпотентны и безопасны при повторном запуске.
  * - Время — TEXT ISO-8601 UTC с `Z`.
  */
 export async function applySchema(platform: Platform): Promise<void> {
   if (!platform.configured) return;
-  // schema-guard: на managed-БД каждый exec = сетевой round-trip. Если эта версия
-  // схемы уже накачена — пропускаем весь DDL ниже (иначе под `tsx watch` это цена
-  // КАЖДОЙ правки). Хэш считается от исходника функции: добавишь/изменишь DDL ниже —
-  // хэш сменится и схема накатится заново.
+  // schema-guard пропускает повторную проверку неизменённой схемы.
+  // Изменение тела функции обновляет хэш и повторно применяет идемпотентные шаги.
   const schemaHash = createHash('sha256').update(applySchema.toString()).digest('hex').slice(0, 32);
   await platform.db.exec(`CREATE TABLE IF NOT EXISTS _schema_done (hash TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))`);
   if (await platform.db.first(`SELECT hash FROM _schema_done WHERE hash = ?`, [schemaHash])) return;
 
   // AICODE-NOTE: DDL перечислен внутри функции (а не константой снаружи), иначе
-  // schema-guard не увидит изменений. Слова RELEASE/ATTACH/DETACH в SQL запрещены прокси.
+  // schema-guard не увидит изменений.
   const ddl: string[] = [
     // --- доступ и конфигурация ---
     `CREATE TABLE IF NOT EXISTS admins (
@@ -497,7 +495,7 @@ export async function applySchema(platform: Platform): Promise<void> {
   }
   // AICODE-NOTE: канал MAX у отчёта — НЕ вторая строка в reports (UNIQUE по (recipient_id,
   // period_type, starts_at, ends_at, version) не ослабить без пересборки таблицы — ALTER TABLE
-  // ADD COLUMN этого не умеет, а пересобирать таблицу без транзакций managed-БД рискованно).
+  // ADD COLUMN этого не умеет, а пересборка таблицы требует отдельной миграции).
   // Вместо этого MAX-артефакт отчёта хранится параллельным набором колонок на той же строке
   // (тот же приём, что у recipients.max_* ниже).
   if (!reportCols.some((c) => c.name === 'max_status')) {

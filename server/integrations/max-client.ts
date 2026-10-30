@@ -11,7 +11,7 @@ import type { BotKeyboard } from '~server/domain/keyboard';
  * национальным УЦ (Минцифры, «Russian Trusted Root/Sub CA») — его нет в дефолтном
  * доверенном наборе Node. Без явной настройки fetch падает с
  * UNABLE_TO_GET_ISSUER_CERT_LOCALLY. Доверенная цепочка подложена через
- * NODE_EXTRA_CA_CERTS (см. .platform/dev-start.sh и .platform/prod-start.sh,
+ * NODE_EXTRA_CA_CERTS (см. scripts/dev.sh и scripts/start.sh,
  * файл server/certs/russian-trusted-ca-bundle.pem) — это глобальная для процесса,
  * но не ослабляющая проверку сертификатов настройка (добавляет доверие к одному
  * легитимному гос. УЦ, а не отключает верификацию TLS).

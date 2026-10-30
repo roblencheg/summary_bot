@@ -5,7 +5,7 @@ const KEY = 'guide/intro-video.mp4';
 
 export type GuideVideo = { buffer: Buffer; contentType: string };
 
-/** Обучающий ролик руководителя — один статичный файл в managed S3, читается один раз и кэшируется в процессе. */
+/** Обучающий ролик руководителя — один статичный файл в локальное файловое хранилище, читается один раз и кэшируется в процессе. */
 export class GuideRepository {
   private cached: GuideVideo | null | undefined;
 

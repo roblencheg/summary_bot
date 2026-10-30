@@ -1,24 +1,24 @@
 # Самостоятельное развёртывание
 
 Актуальная эксплуатационная инструкция — в README.md. Node.js 24, Docker Compose, постоянный volume `/app/data`.
-`server/platform.ts` реализует SQLite через node:sqlite (WAL, один процесс) и файловое хранилище; RUNTIME_BASE_URL/TOKEN и managed S3 больше не нужны.
+`server/platform.ts` реализует SQLite через node:sqlite (WAL, один процесс) и файловое хранилище.
 Схема автоматически применяется при старте; на чистой БД создаётся только настроенный суперадминистратор, бизнес-данные отсутствуют.
 Один экземпляр platform передаётся контейнеру сервисов и закрывается вместе с HTTP-сервером.
 `ADMIN_INITIAL_*`, токены каналов, AI endpoint/key, origin и начальные timezone/model задаются окружением (см. .env.example).
 Настройки timezone/model из окружения служат умолчаниями: сохранённые через UI значения имеют приоритет.
 Cookie Secure определяется HTTPS origin; CORS и CSRF используют PUBLIC_BASE_URL.
-API, сущности и слои приложения сохранены. Историческое описание исходной системы приведено ниже; упоминания managed-сервисов относятся к исходнику.
+Ниже приведена карта слоёв, сущностей и API приложения.
 
 ---
 
 # Карта проекта
 
 Указатель: что где лежит и куда идти за чем. Правила работы — в `AGENTS.md`.
-**Держи карту в актуальном состоянии**: появилась сущность, эндпоинт, таблица, слой или managed-зависимость — добавь строку.
+**Держи карту в актуальном состоянии**: появилась сущность, эндпоинт, таблица, слой или внешняя зависимость — добавь строку.
 
 **Продукт**: мониторинг Telegram-чатов поддержки — сбор сообщений ботом, AI-анализ, инциденты и алерты, саммари 08:00/22:00, админка. Обзор и эксплуатация — `README.md`, настройка — `docs/admin-guide.md`.
 
-**Стек**: React 19 + React Router v7 + @tanstack/react-query + Tailwind v4 + Rsbuild · Fastify 5 (ESM, tsx) + `@fastify/cookie` · zod в `shared/` как единый источник контрактов · managed SQLite/S3/LLM через SDK · Telegram Bot API и MAX Bot API через `fetch`.
+**Стек**: React 19 + React Router v7 + @tanstack/react-query + Tailwind v4 + Rsbuild · Fastify 5 (ESM, tsx) + `@fastify/cookie` · zod в `shared/` как единый источник контрактов · локальная SQLite, файловое хранилище и внешний AI API · Telegram Bot API и MAX Bot API через `fetch`.
 
 ## Куда идти за чем
 
@@ -28,7 +28,7 @@ API, сущности и слои приложения сохранены. Ис�
 - Бизнес-правила — `server/services/<x>-service.ts`
 - HTTP-эндпоинты — `server/routes/<x>.ts`, регистрация в `server/routes/index.ts`
 - Domain-типы бэка — `server/models/<x>.ts`
-- Доступ к managed DB/S3/LLM — `server/platform.ts`
+- Адаптеры SQLite, файлов и AI — `server/platform.ts`
 - Валидация env — `server/config.ts`
 - Сборка Fastify (CORS, статика) — `server/app.ts`
 - Клиент API — `src/lib/api.ts`
@@ -89,7 +89,7 @@ worker ┘     │  └→ integrations (Telegram Bot API, AI) — внешни�
 | Доставка | `delivery_jobs` (`channel`), `delivery_attempts` | `delivery-repository`, `delivery-service` (канал задания выбирает клиента и получателя; саммари и «Что сейчас происходит» в Telegram — одним `sendRichMessage`, при `bad_request` — текст частями; в MAX — всегда текст), `rate-limiter` (отдельный лимитер на каждый канал) |
 | Меню бота и дайджест «Что сейчас происходит» | `on_demand_requests` (`channel`), `recipients.menu_message_id` / `recipients.max_menu_message_id` | `on-demand-repository`, `on-demand-service`, `callback-router` (нажатия `menu:*` / `fb:*`, канал — в `BotCallback`), `DigestService.buildAdHoc`, `ReportService.assembleOnDemand` |
 | Технические уведомления | `tech_alert_state` | `tech-alert-service`, `monitor-service` |
-| Обзор, метрики, бэкапы | — / managed S3 `backups/` | `metrics-repository`, `overview-service`, `backup-repository`, `maintenance-service` |
+| Обзор, метрики, бэкапы | — / локальное хранилище `backups/` | `metrics-repository`, `overview-service`, `backup-repository`, `maintenance-service` |
 
 Шаблонная таблица `notes` осталась в БД (без `DROP`), кодом не используется.
 
@@ -160,62 +160,46 @@ worker ┘     │  └→ integrations (Telegram Bot API, AI) — внешни�
 
 `tutorial-video/` — обучающий ролик для руководителя (Remotion): демо-данные в dev-БД, снимки интерфейса, озвучка, монтаж. Как пересобрать — `tutorial-video/README.md`. Отдельный пакет со своим `package.json`, в сборку приложения не входит.
 
-## Managed-сервисы (`server/platform.ts`)
+## Хранилища и AI (`server/platform.ts`)
 
-```ts
-import { createPlatform } from '~server/platform';
-const platform = createPlatform(); // читает RUNTIME_BASE_URL / RUNTIME_TOKEN
-```
+`createPlatform()` читает `DATA_DIR` и открывает SQLite (`summary.sqlite`, WAL) и файловое хранилище (`storage/`). Один экземпляр передаётся сервисам и закрывается вместе с сервером.
 
-- **DB (SQLite)** — `platform.db.query<Row>(sql, params)`, `.first<Row>()`, `.exec()` → `{changes, lastInsertRowid?}`, `.tables()`. `query()` отдаёт максимум 100 строк за вызов: страницу режет прокси, флаг `hasMore` SDK не пробрасывает — списки читай постранично, `LIMIT/OFFSET` прямо в SQL, страница ≤ 100 (`LIMIT 500` всё равно вернёт 100). Один statement на вызов: `;` внутри запроса → 400. Заблокированы `BEGIN/COMMIT/ROLLBACK/SAVEPOINT/RELEASE`, `ATTACH/DETACH`, `LOAD_EXTENSION`, `writable_schema` — матч по слову в любом месте SQL, так что и колонка с именем `release` не пройдёт. Лимит файла БД — 1 ГиБ, при превышении запись отдаёт 400 `db_too_large`; dev-БД у каждого пользователя проекта своя, prod — общая.
-- **Storage (S3)** — `.upload(key, body, contentType?)`, `.list({prefix, maxKeys, continuationToken, delimiter})`, `.download(key)`, `.delete(key)`, `.head(key)`, `.usage()` → `{totalBytes, objectCount, limitBytes}`. Лимит 50 МБ на файл; квоту окружения задаёт платформа — текущую смотри через `.usage()`, а не по цифре в этом файле. Превышение — 413 `file_too_large` / `quota_exceeded`. Используется бэкапом (`backup-repository.ts`) и обучающим роликом (`guide-repository.ts`, ключ `guide/intro-video.mp4`, ~41 МБ — близко к лимиту файла, сюда видео большего размера не влезет без сжатия).
-- **LLM** — `openaiConfig()` и `geminiConfig()` отдают конфиг для `new OpenAI(...)`, baseURL уже с `/v1`. Нужен `pnpm add openai`.
+- **БД** — `query<Row>()`, `first<Row>()`, `exec()` и `tables()`; запросы выполняются локально через `node:sqlite`. `exec()` возвращает `changes` и `lastInsertRowid`; для чтения строк используется `query()`.
+- **Файлы** — `upload()`, `list()`, `download()`, `delete()`, `head()` и `usage()`. Бэкапы лежат в `storage/backups/`, необязательный ролик — `storage/guide/intro-video.mp4`. Вместимость определяется диском сервера.
+- **AI** — `openaiConfig()` берёт endpoint и ключ из окружения. Провайдер должен поддерживать Responses API и строгую JSON Schema.
 
-**Миграции** — `server/migrations.ts`, функция `applySchema(platform)`, вызывается один раз при старте. Только `CREATE TABLE IF NOT EXISTS` и — под проверкой существования колонки — `ALTER TABLE ADD COLUMN`, транзакций нет. Внутри schema-guard: хэш исходника функции пишется в `_schema_done`, поэтому правка DDL внутри функции сама приводит к повторному накату — всего DDL целиком. `CREATE TABLE IF NOT EXISTS` это переживает, `ALTER TABLE ADD COLUMN` — нет: колонка уже есть, придёт `duplicate column name`, ошибка не глушится и старт сервера падает. Добавляй колонку под проверкой:
+**Миграции** — `applySchema()` в `server/migrations.ts`, идемпотентные CREATE и проверяемые ALTER. Хэш функции хранится в `_schema_done`: после изменений схема проверяется заново. Перед `ALTER TABLE ADD COLUMN` проверяйте `pragma_table_info()`; даты храните как ISO-8601 UTC с `Z`.
 
-```ts
-const cols = await platform.db.query<{ name: string }>("SELECT name FROM pragma_table_info('notes')");
-if (!cols.some((c) => c.name === 'tag')) {
-  await platform.db.exec(`ALTER TABLE notes ADD COLUMN tag TEXT`);
-}
-```
-
-Именно `pragma_table_info(...)` внутри `SELECT`: голый `PRAGMA` прокси не пропустит. `IF NOT EXISTS` для колонок SQLite не поддерживает ни один билд. Колонки — `snake_case`, поля моделей — `camelCase`, маппинг делает `rowToX`. Даты — строка ISO-8601 с `Z`, иначе Safari отдаёт Invalid Date.
-
-**Env** инжектит платформа, `.env` не создавай: `NODE_ENV`, `RUNTIME_BASE_URL`, `RUNTIME_TOKEN`, `OPENAI_*`, `GEMINI_*` плюс пользовательские из дашборда: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_MODE`, `TELEGRAM_WEBHOOK_SECRET`, `MAX_BOT_TOKEN`, `MAX_MODE`, `MAX_WEBHOOK_SECRET`, `ADMIN_INITIAL_LOGIN`, `ADMIN_INITIAL_PASSWORD`, `PUBLIC_BASE_URL`. Валидация — `server/config.ts`. `MAX_MODE` — те же значения и то же умолчание (`polling` в prod, `off` в dev), что у `TELEGRAM_MODE`, по той же причине (см. «Симптом → причина»).
+**Окружение** — `.env` или переменные контейнера, примеры в `.env.example`, валидация в `server/config.ts`. Укажите свои токены ботов, начального суперадминистратора, origin, часовой пояс, модель и AI API. В development интеграции без явно выбранного режима выключены. Для отладки используйте отдельные боты.
 
 ## Команды
 
-`pnpm dev` (через `.platform/dev-start.sh`: бэкенд на :3001, rsbuild на :3000) · `pnpm build` · `pnpm typecheck`.
+`bash scripts/dev.sh` (бэкенд на :3001, rsbuild на :3000) · `pnpm build` · `pnpm typecheck`.
 
 Path-алиасы из `tsconfig.json`: `~shared/*`, `~server/*`, `~/*`.
 
 **Зависимости — только через `pnpm add`**: старт и сборка идут `pnpm install --frozen-lockfile`, ручная правка `package.json` без обновления `pnpm-lock.yaml` ломает запуск.
 
-**Backend в фоне — только `NODE_OPTIONS="--max-old-space-size=1024" pnpm exec tsx watch server/index.ts &`**: без `watch` правки в `server/*.ts` не подхватываются, пока процесс жив («исправил, а не меняется»). Не оборачивай `.platform/dev-start.sh` в `while true; do … done` — при краше на старте копии накопятся за секунды и получишь OOM.
+**Backend в фоне — только `NODE_OPTIONS="--max-old-space-size=1024" pnpm exec tsx watch server/index.ts &`**: без `watch` правки в `server/*.ts` не подхватываются, пока процесс жив («исправил, а не меняется»). Не оборачивай `scripts/dev.sh` в `while true; do … done` — при краше на старте копии накопятся за секунды и получишь OOM.
 
 ## Симптом → причина
 
 - **Эндпоинт отдаёт HTML вместо JSON** — путь объявлен без префикса `/api`: в prod его забирает SPA-fallback (`server/app.ts`), в dev его не проксирует rsbuild. Обратный случай, JSON-404 `Route GET:/api/... not found`, — файл роутов не подключён в `server/routes/index.ts`.
-- **400 `Potentially unsafe SQL keywords are not allowed`** — в SQL попало `BEGIN/COMMIT/ROLLBACK/SAVEPOINT/RELEASE/ATTACH/DETACH/LOAD_EXTENSION/writable_schema`, в том числе как имя колонки. Транзакций в managed-БД нет.
-- **Список обрывается на 100 записях** — дефолтная страница managed-БД, а не баг фронта.
 - **`duplicate column name`, сервер не стартует** — `ALTER TABLE ADD COLUMN` в `applySchema()` накатился повторно, см. «Миграции».
 - **ZodError на клиенте** — сервер вернул не то, что обещает `shared/schemas.ts`. Чини сервер или схему, а не `as any`.
 - **400 «Некорректные данные» на ответе с чатом внутри** — `ChatSchema` требует `access`/`ownerDirectorate`/`importance`, их добавляет `decorate` в `routes/chats.ts`. Во вложенных ответах (отчёт и т. п.) бери `ChatSchema.pick(...)` или декорируй чат.
 - **Правка в `server/*.ts` не подхватилась** — бэкенд поднят без `tsx watch`.
 - **Привязка не срабатывает, `/start` «теряется», `getWebhookInfo` — `Connection timed out`** — Telegram не достаёт до домена деплоя. Prod работает в режиме `polling` и при старте сам снимает webhook; не включай `TELEGRAM_MODE=webhook`, пока домен не станет доступен извне.
 - **MAX: `/api/max/webhook` не включай** — та же недостижимость домена, что у Telegram, плюс подпись/секрет webhook-запроса MAX не задокументирована однозначно (см. `server/integrations/max-client.ts`) — `MAX_MODE=polling` везде, пока это не прояснится.
-- **MAX: `getUpdates` падает с `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`** — `platform-api2.max.ru` отдаёт сертификат от российского национального УЦ (Минцифры), которого нет в дефолтном доверенном наборе Node. Исправлено подключением `NODE_EXTRA_CA_CERTS=/workspace/server/certs/russian-trusted-ca-bundle.pem` в `.platform/dev-start.sh`/`.platform/prod-start.sh` — применяется только при полном перезапуске контейнера (переменная окружения читается Node при старте процесса, `tsx watch` её не подхватит на лету).
+- **MAX: ошибка доверия TLS-сертификату** — задайте EXTRA_CA_CERTS с путём к проверенному PEM bundle, как описано в README. При запуске без Docker используйте NODE_EXTRA_CA_CERTS. После изменения перезапустите процесс Node.js.
 - **MAX: бот в группе «молчит» (аналог Telegram privacy mode)** — по официальной схеме MAX `message_created` в группе бот получает только если он администратор с правом `read_all_messages`; без этого чат выглядит активным (`status: active`), но ни одно сообщение не доходит — тихо, без апдейта об ошибке. Проверяется `GET /chats/{chatId}/members/me` (`ChatService.checkRightsMax`, вызывается при `bot_added` и по кнопке «Проверить права»); `bot_added` не несёт название группы — его тоже подтягивает `checkRightsMax` через `GET /chats/{chatId}`.
 - **MAX: название чата после первого сообщения снова превращается в «Чат `<id>`»** — у MAX `message_created`/`bot_added` не несут title чата (в отличие от Telegram, где он есть в каждом апдейте), а `ChatRepository.upsertSeen` безусловно перезаписывает `title` на каждый вызов (для Telegram это нужно — подхватывает переименования). `MaxIngestionService.onMessage`/`onMembership` раньше каждый раз генерировали плейсхолдер `Чат <id>` и этим затирали уже известное правильное название, полученное через `checkRightsMax`. Исправлено: `knownTitle()` подставляет уже сохранённый title вместо плейсхолдера. Пострадавший побочный эффект: уже отправленные алерты/саммари с этим багом навсегда остаются с текстом «Чат `<id>>»`» — текст сообщения не перерендеривается после отправки.
 - **MAX: в алертах/саммари нет ссылки на сообщение (есть у Telegram)** — подтверждено официальной схемой MAX: `link` у `Message`/`NewMessageBody` — это ссылка на сообщение для reply/forward, не публичный URL; постоянного permalink на сообщение в MAX не существует. `Chat.link` — ссылка-приглашение в чат, но только для публичных чатов (`is_public: true`); у приватных групп (обычный случай для рабочих чатов) — `null`. Фоллбэк для MAX — тот же текстовый формат «название, сообщение #id», что у Telegram-групп без ссылки (не баг, а общий для обоих каналов случай «ссылки нет»).
 - **MAX: привязка и любая доставка в личку отвечают `404 Chat not found`** — у MAX `POST /messages` различает адресацию: `chat_id` — только группа/канал, `user_id` — личный диалог; это разные id-пространства (в отличие от Telegram, где у приватного чата `chat_id == user_id`). Весь приватный обмен (привязка, саммари, алерты, меню, тест) должен идти через `user_id` — `MaxClient.sendMessage` в `max-client.ts`; `chat_id`/`sendToChat` — только для ответа в группу (подключение чата к дирекции, `max-command-service.ts`).
 - **MAX: ответ в личку падает с `Invalid chatId: 0`** — в `Message.recipient.user_id` («если сообщение адресовано пользователю») для входящего от человека сообщения это получатель-бот, а не отправитель; при подстановке в `?? m.sender.user_id` значение не было `null`/`undefined`, поэтому запасной вариант не срабатывал. Адрес для ответа в диалоге MAX — всегда `m.sender.user_id` (`max-ingestion-service.ts`), не `recipient.user_id`.
 - **`409 Conflict` от `getUpdates`** — у токена установлен webhook или работает другой потребитель (например, prod). В dev с prod-токеном держи `TELEGRAM_MODE=off`, для отладки приёма — отдельный тестовый бот.
-- **`lastInsertRowid` есть, а строки нет** — managed `/db/exec` возвращает `lastInsertRowid` и при `changes = 0` (`ON CONFLICT DO NOTHING`). Решай по `changes`, id перечитывай `SELECT`-ом.
-- **`RETURNING` в `exec` не возвращает строк**, а `/db/query` не пускает `UPDATE`. Захват очереди — `UPDATE … SET lease_token = ?` и затем `SELECT … WHERE lease_token = ?`.
 - **Бот в группе «молчит»** — privacy mode: бот видит только команды. Отключи в @BotFather и добавь бота заново или сделай его администратором.
-- **Cookie сессии не ставится в превью** — в dev cookie `SameSite=None; Secure`, нужен https-адрес превью. В prod — `Strict` на своём домене.
+- **Не сохраняется сессия** — проверьте совпадение `PUBLIC_BASE_URL` с origin браузера. Cookie использует `SameSite=Strict`, а при HTTPS также `Secure`.
 - **В саммари у чата нет итоговой фразы или «Требует решения» без имён у инцидентов** — дайджест построен до `digest-v3` (нет `headline`, `authorName`) или без AI. Пересобери период в «Периодах».
 - **Чат пропал из «Чатов» и из подписок** — бота удалили из группы: чат во вкладке «Архив», подписки сняты `SubscriptionService.purgeChat` (вызывается из `ChatService.botMembershipChanged`). При возврате бота подписки не восстанавливаются — так задумано.
 - **В Telegram-отчёте нет пробела сбора, а в веб-интерфейсе он есть** — пробелы короче `TECH.reportGapMinMs` (30 мин) скрываются в рендере отчёта намеренно.
@@ -229,4 +213,4 @@ Path-алиасы из `tsconfig.json`: `~shared/*`, `~server/*`, `~/*`.
 - **Поле есть в модели/БД, но на фронте `undefined`** — zod-схема ответа (`shared/schemas.ts`) не содержит ключ: `z.object(...).parse()` молча отбрасывает всё, чего нет в схеме (не ошибка, а потеря поля). Так `reports.maxParts` не доходил до клиента, хотя был в `Report`/`report-repository.ts`. При добавлении канального поля в модель — сразу добавляй его и в DTO-схему, иначе компилятор не поймает.
 - **Эндпоинт падает с ZodError на ровном месте** — ответ собран без одного из required-полей новой схемы (например, `AppContextSchema.maxBotUsername` после добавления канала). `.parse()` на объект без обязательного ключа — это ошибка, а не `undefined`; `.nullable()` ≠ `.optional()`.
 - **Rich-версии у отчёта нет** — `renderRichWithinLimits` не уложился в лимиты (≤30 000 символов, ≤480 блоков) даже без списка обращений — отправляется текст.
-- **Dev: `Module not found` на существующий файл, а `pnpm build` проходит** — устаревший кэш `rsbuild dev`. `pkill` в контейнере нет: найди PID через `/proc/*/cmdline` и `kill` процессы `rsbuild`/`tsx` (не PID 1), supervisor перезапустит.
+- **Dev: `Module not found` на существующий файл** — перезапустите сервер разработки и проверьте кэш Rsbuild.

@@ -84,7 +84,7 @@ export class MaintenanceService {
     return stats;
   }
 
-  /** Экспорт всех таблиц в NDJSON.gz в managed S3, ротация копий. */
+  /** Экспорт всех таблиц в NDJSON.gz в локальное файловое хранилище, ротация копий. */
   async runBackup(now = new Date(), keep = 14): Promise<string> {
     if (!this.backup) throw new Error('Хранилище недоступно');
     const date = now.toISOString().slice(0, 10);

@@ -46,7 +46,7 @@ export async function registerAuthGuard(app: FastifyInstance, c: Container): Pro
 }
 
 function cookieOptions(expires?: Date) {
-  // AICODE-NOTE: в dev превью открывается во фрейме платформы — нужна SameSite=None; Secure.
+  // AICODE-NOTE: cookie привязана к origin приложения; Secure включается при HTTPS.
   // В prod — строгий режим на собственном домене.
   return {
     path: '/',

@@ -34,7 +34,7 @@ const ACCESS_COLS = 'chat_id, directorate_id, access, importance';
 export class DirectorateRepository {
   constructor(private readonly db: Db) {}
 
-  /** Все строки запроса страницами по PAGE — managed /db/query отдаёт ≤ 100 строк. */
+  /** Все строки запроса страницами по PAGE — списки читаются порциями для ограничения памяти. */
   private async all<T>(sql: string, params: unknown[]): Promise<T[]> {
     const out: T[] = [];
     for (let offset = 0; ; offset += PAGE) {

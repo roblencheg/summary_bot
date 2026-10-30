@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-/** Хелперы маппинга строк managed SQLite. */
+/** Хелперы маппинга строк SQLite. */
 
 export const nowIso = (): string => new Date().toISOString();
 export const isoPlus = (ms: number, from: Date = new Date()): string => new Date(from.getTime() + ms).toISOString();
@@ -24,6 +24,5 @@ export const strOrNull = (v: unknown): string | null => (v === null || v === und
 /** "?, ?, ?" для IN (...) */
 export const placeholders = (n: number): string => Array.from({ length: n }, () => '?').join(', ');
 
-// AICODE-NOTE: managed /db/query отдаёт максимум 100 строк за вызов. Все списки
-// читаем страницами ≤ 100 (PAGE) — LIMIT больше всё равно обрежется прокси.
+// Общий размер страницы для последовательного чтения списков.
 export const PAGE = 100;
